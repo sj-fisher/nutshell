@@ -3,6 +3,7 @@ import json
 import math
 import time
 import uuid
+from collections import Counter
 from itertools import groupby
 from posixpath import join
 from typing import Dict, List, Optional, Tuple, Union
@@ -1202,6 +1203,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         - If we can pay exactly with a subset of the proofs on hand, we do that.
         - Otherwise, if we have any proofs larger than the required amount, we use the smallest such proof.
         - Otherwise, we keep adding the largest remaining proof until we have enough.
+        This algorithm is referred to as PESS (prefer exact or smallest single).
 
         Rules:
         1) Proofs that are not marked as reserved
@@ -1227,21 +1229,51 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         ]
         send_proofs += proofs_old_epochs
 
-        # coinselect based on amount only from the current keyset
-        # start with the proofs with the largest amount and add them until the target amount is reached
-        proofs_current_epoch = [
-            p for p in proofs if p.id == self.keysets[self.keyset_id].id
-        ]
-        sorted_proofs_of_current_keyset = sorted(
-            proofs_current_epoch, key=lambda p: p.amount
-        )
-
-        while sum_proofs(send_proofs) < amount_to_send:
-            proof_to_add = sorted_proofs_of_current_keyset.pop()
-            send_proofs.append(proof_to_add)
+        # pick additional proofs from the current keyset if they are needed 
+        remaining_amount_to_make_up = amount_to_send - sum_proofs(send_proofs)
+        if remaining_amount_to_make_up > 0:
+            proofs_current_epoch = [
+                p for p in proofs if p.id == self.keysets[self.keyset_id].id
+            ]
+            send_proofs.extend(self._select_proofs_to_send_pess(proofs_current_epoch, remaining_amount_to_make_up))
 
         logger.trace(f"selected proof amounts: {[p.amount for p in send_proofs]}")
         return send_proofs
+
+    def _select_proofs_to_send_pess(
+        self, proofs: List[Proof], amount_to_send: int
+    ) -> List[Proof]:
+        """
+        Select proofs which sum to at least amount_to_send, using the PESS algorithm described above.
+        """
+
+        # use an exact subset of the proofs available to make up the amount if possible
+        exact_proofs_subset = self._try_find_exact_proofs_subset(proofs, amount_to_send)
+        if exact_proofs_subset is not None:
+            return exact_proofs_subset
+
+        # if we have any proofs larger than the required amount, use the smallest such proof
+        sorted_proofs_of_current_keyset = sorted(
+            proofs, key=lambda p: p.amount
+        )
+        for proof in sorted_proofs_of_current_keyset:
+            if proof.amount >= amount_to_send:
+                return [proof]
+
+        # start with the proofs with the largest amount and add them until the target amount is reached
+        send_proofs = []
+        while sum_proofs(send_proofs) < amount_to_send:
+            proof_to_add = sorted_proofs_of_current_keyset.pop()
+            send_proofs.append(proof_to_add)
+        return send_proofs
+
+    def _try_find_exact_proofs_subset(
+        self, proofs: List[Proof], amount_to_send: int
+    ) -> List[Proof]:
+        """
+        Returns a subset of proofs summing exactly to amount_to_send, or None if there is no such subset.
+        """
+        return None # TODO TEMP HACK
 
     async def set_reserved(self, proofs: List[Proof], reserved: bool) -> None:
         """Mark a proof as reserved or reset it in the wallet db to avoid reuse when it is sent.
