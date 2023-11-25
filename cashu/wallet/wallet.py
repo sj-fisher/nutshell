@@ -1197,7 +1197,11 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         Selects proofs that can be used with the current mint. Implements a simple coin selection algorithm.
 
         The algorithm has two objectives: Get rid of all tokens from old epochs and include additional proofs from
-        the current epoch starting from the proofs with the largest amount.
+        the current epoch if the tokens from old epochs are not enough to cover amount_to_send. When selecting
+        additional proofs from the current epoch:
+        - If we can pay exactly with a subset of the proofs on hand, we do that.
+        - Otherwise, if we have any proofs larger than the required amount, we use the smallest such proof.
+        - Otherwise, we keep adding the largest remaining proof until we have enough.
 
         Rules:
         1) Proofs that are not marked as reserved
