@@ -1272,8 +1272,67 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
     ) -> List[Proof]:
         """
         Returns a subset of proofs summing exactly to amount_to_send, or None if there is no such subset.
+
+        The algorithm used here takes advantage of the fact that proof sizes are powers of two:
+        - We initially naively try to use the proof sizes implied by amount_to_send's binary representation.
+        - If that involved using more proofs of a particular size than we actually have, we try to combine
+          smaller-valued proofs we do have to make up for the missing proofs.
         """
-        return None # TODO TEMP HACK
+
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXX@@@", file=f)
+        # break the available proofs down by size
+        proof_count_by_size = Counter(p.amount for p in proofs)
+        original_proof_count_by_size = proof_count_by_size.copy()
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXXAAA", proof_count_by_size, file=f)
+
+        # naively select proofs matching amount_to_send's binary representation, allowing ourselves to select
+        # proofs of desired sizes even if we don't have enough
+        proof_size = 1
+        while proof_size <= amount_to_send:
+            if (amount_to_send & proof_size) != 0:
+                proof_count_by_size[proof_size] -= 1
+            proof_size <<= 1
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXXBBB", proof_count_by_size, file=f)
+                
+        # If we selected proofs we didn't actually have, try to compensate by substituting smaller-valued
+        # proofs we do have. We work from the largest missing proof sizes downwards.
+        sizes = sorted(proof_count_by_size.keys(), reverse=True)
+        for i, size in enumerate(sizes):
+            while proof_count_by_size[size] < 0:
+                shortfall = size * -proof_count_by_size[size]
+                for substitute_size in sizes[i+1:]:
+                    proofs_to_take = min(
+                        shortfall // substitute_size, proof_count_by_size[substitute_size])
+                    proof_count_by_size[substitute_size] -= proofs_to_take
+                    shortfall -= substitute_size * proofs_to_take
+                    if shortfall == 0:
+                        proof_count_by_size[size] = 0
+                        break
+                if shortfall != 0:
+                    return None
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXXCCC", proof_count_by_size, file=f)
+
+        # we found an exact subset of the proofs we have available summing to amount_to_send
+        proof_count_to_send_by_size = original_proof_count_by_size - proof_count_by_size
+        assert sum(size*count for (size, count) in proof_count_to_send_by_size.items()) == amount_to_send
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXXDDD", proof_count_to_send_by_size, file=f)
+
+        # so far we just worked with counts of proofs, so pick actual proofs of the required sizes and
+        # quantities
+        send_proofs = []
+        for proof in proofs:
+            if proof_count_to_send_by_size[proof.amount] > 0:
+                send_proofs.append(proof)
+                proof_count_to_send_by_size[proof.amount] -= 1
+        assert sum(p.amount for p in send_proofs) == amount_to_send
+        with open('/tmp/ffs.txt', 'a') as f:
+            print("XXXZZZ", send_proofs, file=f)
+        return send_proofs
 
     async def set_reserved(self, proofs: List[Proof], reserved: bool) -> None:
         """Mark a proof as reserved or reset it in the wallet db to avoid reuse when it is sent.
