@@ -1298,8 +1298,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
             while proof_count_by_size[size] < 0:
                 shortfall = size * -proof_count_by_size[size]
                 for substitute_size in sizes[i+1:]:
-                    proofs_to_take = min(
-                        shortfall // substitute_size, proof_count_by_size[substitute_size])
+                    proofs_to_take = min(shortfall // substitute_size, proof_count_by_size[substitute_size])
                     proof_count_by_size[substitute_size] -= proofs_to_take
                     shortfall -= substitute_size * proofs_to_take
                     if shortfall == 0:
