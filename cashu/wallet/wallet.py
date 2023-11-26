@@ -1279,13 +1279,9 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
           smaller-valued proofs we do have to make up for the missing proofs.
         """
 
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXX@@@", file=f)
         # break the available proofs down by size
         proof_count_by_size = Counter(p.amount for p in proofs)
         original_proof_count_by_size = proof_count_by_size.copy()
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXXAAA", proof_count_by_size, file=f)
 
         # naively select proofs matching amount_to_send's binary representation, allowing ourselves to select
         # proofs of desired sizes even if we don't have enough
@@ -1294,8 +1290,6 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
             if (amount_to_send & proof_size) != 0:
                 proof_count_by_size[proof_size] -= 1
             proof_size <<= 1
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXXBBB", proof_count_by_size, file=f)
                 
         # If we selected proofs we didn't actually have, try to compensate by substituting smaller-valued
         # proofs we do have. We work from the largest missing proof sizes downwards.
@@ -1313,14 +1307,10 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
                         break
                 if shortfall != 0:
                     return None
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXXCCC", proof_count_by_size, file=f)
 
         # we found an exact subset of the proofs we have available summing to amount_to_send
         proof_count_to_send_by_size = original_proof_count_by_size - proof_count_by_size
         assert sum(size*count for (size, count) in proof_count_to_send_by_size.items()) == amount_to_send
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXXDDD", proof_count_to_send_by_size, file=f)
 
         # so far we just worked with counts of proofs, so pick actual proofs of the required sizes and
         # quantities
@@ -1330,8 +1320,6 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
                 send_proofs.append(proof)
                 proof_count_to_send_by_size[proof.amount] -= 1
         assert sum(p.amount for p in send_proofs) == amount_to_send
-        with open('/tmp/ffs.txt', 'a') as f:
-            print("XXXZZZ", send_proofs, file=f)
         return send_proofs
 
     async def set_reserved(self, proofs: List[Proof], reserved: bool) -> None:
